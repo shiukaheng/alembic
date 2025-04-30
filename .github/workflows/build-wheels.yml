@@ -1,61 +1,69 @@
-name: Build & test wheels (CPython 3.11)
+name: Build & Test Wheels (cibuildwheel)
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   pull_request:
 
 jobs:
   build:
-    name: cibw – ${{ matrix.os }}
+    name: cibw • ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-14]   # add macos-13 if you need  Intel-only
+        os: [ubuntu-latest, windows-latest, macos-14]   # add macos-13 if you still need Intel-only
+
     steps:
       - uses: actions/checkout@v4
 
-      # ----------  OPTIONAL:  build deps that are NOT on PyPI  ----------
-      - name: Install Alembic build dependencies
-        shell: bash
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install numpy               # runtime dep
-          # ---------- Imath ----------
-          python -m pip install imath               # wheels exist for 3.11
-          # ---------- Boost::Python ----------
-          # Linux/macos: easy; Windows: use pre-built binaries from conda-forge or vcpkg
-          # Example (Linux): sudo apt-get update && sudo apt-get install -y libboost-python-dev
+      # ---------- standard Python ----------
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-      # ----------  cibuildwheel  ----------
+      # ---------- cibuildwheel itself ----------
+      - name: Install cibuildwheel
+        run: python -m pip install --upgrade cibuildwheel==2.18.1
+
+      # ---------- per-OS dependency hooks ----------
+      # macOS: build Boost-Python & Imath from source (matches wheel's Python)
+      - name: Build C++ deps (macOS)
+        if: matrix.os == 'macos-14'
+        run: bash .ci/build_deps_macos.sh
+
+      # Linux: dev packages + build matching Boost-Python & Imath
+      - name: Build C++ deps (manylinux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl tar \
+                                  libboost-all-dev            # header-only Boost
+          # Build Boost-Python + PyImath for CPython 3.11 (same logic as macOS)
+          bash .ci/build_deps_macos.sh       # works unchanged inside manylinux
+
+      # Windows: use vcpkg to compile Boost-Python & Imath for CPython 3.11
+      - name: Build C++ deps (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          choco install --no-progress ninja
+          git clone https://github.com/microsoft/vcpkg C:\vcpkg
+          C:\vcpkg\bootstrap-vcpkg.bat
+          C:\vcpkg\vcpkg install boost-python imath[python]:x64-windows
+          echo "VCPKG_ROOT=C:\vcpkg" >> $Env:GITHUB_ENV
+          echo "CMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake" >> $Env:GITHUB_ENV
+
+      # ---------- wheel build & smoke-test ----------
       - name: Build wheels
-        uses: pypa/cibuildwheel@v2.18.1
         env:
           CIBW_BUILD: "cp311-*"
-          CIBW_TEST_COMMAND: >
-            python - <<'PY'
-            import alembic, sys, imath, ctypes, pathlib
-            print("Alembic import OK, version", alembic.__version__)
-            PY
-          CIBW_TEST_SKIP: "*-macosx_arm64"   # drop if you haven’t fixed arm64 yet
-          # Pass CMake flags into build
           CIBW_ENVIRONMENT: >
-            CMAKE_ARGS='-DUSE_PYALEMBIC=On -DPYALEMBIC_PYTHON_MAJOR=3'
-          # Linux: need Imath & Boost headers/libs
-          CIBW_BEFORE_BUILD_LINUX: |
-            yum install -y imath-devel boost-devel
-          # Windows: make sure Boost 1.82+ is around (vcpkg example)
-          CIBW_BEFORE_BUILD_WINDOWS: |
-            choco install --no-progress ninja
-            git clone https://github.com/microsoft/vcpkg C:\vcpkg
-            C:\vcpkg\bootstrap-vcpkg.bat
-            C:\vcpkg\vcpkg install boost-python:x64-windows
-            set VCPKG_ROOT=C:\vcpkg
-          # macOS: brew install boost imath if headers not in image
-          CIBW_BEFORE_BUILD_MACOS: |
-            brew install boost imath
+            CMAKE_ARGS="-DUSE_PYALEMBIC=On -DPYALEMBIC_PYTHON_MAJOR=3"
+          CIBW_TEST_COMMAND: "python - <<'PY'\nimport alembic, imath, sys; print('wheel OK:', alembic.__version__)\nPY"
+          CIBW_TEST_SKIP: "*-macosx_arm64"       # drop this line after you’re happy with arm64
+        run: cibuildwheel --output-dir wheelhouse
 
       - uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.os }}
-          path: ./wheelhouse/*.whl
+          path: wheelhouse/*.whl
