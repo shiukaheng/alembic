@@ -1,15 +1,13 @@
 #!/usr/bin/env bash
-# Same idea, but runs INSIDE the manylinux container
+# Build Boost-Python and Imath *inside* the manylinux container
 set -euo pipefail
 
 BOOST_VER=1.88.0
 IMATH_VER=3.1.11
 CPU=$(nproc || getconf _NPROCESSORS_ONLN || echo 8)
 PYBIN=$(python -c 'import sys; print(sys.executable)')
-ROOT="/usr/local/deps"
+ROOT="/usr/local/deps"          # writable inside container
 mkdir -p "$ROOT"
-
-yum install -y curl tar gzip bzip2 make gcc-c++ git
 
 # ---- Boost ----
 curl -L "https://downloads.sourceforge.net/project/boost/boost/${BOOST_VER}/boost_${BOOST_VER//./_}.tar.gz" \
@@ -31,4 +29,5 @@ cmake -S Imath-${IMATH_VER} -B build \
       -DPYTHON_EXECUTABLE="$PYBIN"
 cmake --build build --target install -j"$CPU"
 
+# Hand the prefix path to CMake during wheel build
 echo "CMAKE_PREFIX_PATH=$ROOT" >> "$GITHUB_ENV"
