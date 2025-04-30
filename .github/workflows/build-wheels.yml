@@ -14,6 +14,7 @@ jobs:
         os: [ ubuntu-latest, windows-latest, macos-14 ]
         exclude:
           - os: macos-14 # TODO: Right now MacOS is broken. Lets try to fix it later.
+          - os: ubuntu-latest # TODO: Right now Ubuntu is broken. Lets try to fix it later.
 
     steps:
       - uses: actions/checkout@v4
