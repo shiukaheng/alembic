@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# Build Boost-Python & Imath for the Python that cibuildwheel picked (macOS)
+# Same idea, but runs INSIDE the manylinux container
 set -euo pipefail
 
 BOOST_VER=1.88.0
 IMATH_VER=3.1.11
-CPU=$(sysctl -n hw.logicalcpu)
+CPU=$(nproc || getconf _NPROCESSORS_ONLN || echo 8)
 PYBIN=$(python -c 'import sys; print(sys.executable)')
-ROOT="$HOME/deps"
+ROOT="/usr/local/deps"
 mkdir -p "$ROOT"
+
+yum install -y curl tar gzip bzip2 make gcc-c++ git
 
 # ---- Boost ----
 curl -L "https://downloads.sourceforge.net/project/boost/boost/${BOOST_VER}/boost_${BOOST_VER//./_}.tar.gz" \
