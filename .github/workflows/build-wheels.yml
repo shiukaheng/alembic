@@ -32,7 +32,7 @@ jobs:
           choco install --no-progress ninja
           git clone https://github.com/microsoft/vcpkg C:\vcpkg
           C:\vcpkg\bootstrap-vcpkg.bat
-          C:\vcpkg\vcpkg install boost-python imath[python]:x64-windows
+          C:\vcpkg\vcpkg install boost-python imath[python3]:x64-windows
           # expose the toolchain to CMake during wheel build
           echo "CMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake" >> $Env:GITHUB_ENV
 
